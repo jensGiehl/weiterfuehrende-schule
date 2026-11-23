@@ -10,5 +10,7 @@ public interface TelegramCommandHandler {
 
     void handle(long nextOffset, School school, boolean enabled) throws IOException;
 
+    void status(long nextOffset) throws IOException;
+
     void advance(long nextOffset) throws IOException;
 }

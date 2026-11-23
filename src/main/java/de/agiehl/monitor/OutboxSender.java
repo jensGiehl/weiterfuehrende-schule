@@ -48,9 +48,10 @@ final class OutboxSender {
                 .filter(message -> message.kind() != Kind.RECOVERY || messages.stream().noneMatch(pending ->
                         pending.kind() == Kind.OUTAGE && Objects.equals(message.outageKey(), pending.outageKey())))
                 .min(Comparator.comparingInt(message -> switch (message.kind()) {
-                    case IMPORTANT -> 0;
-                    case NEWS -> 1;
-                    default -> 2;
+                    case STARTUP -> 0;
+                    case IMPORTANT -> 1;
+                    case NEWS -> 2;
+                    default -> 3;
                 }));
     }
 

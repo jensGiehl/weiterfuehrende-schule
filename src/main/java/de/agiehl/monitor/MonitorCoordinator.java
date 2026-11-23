@@ -39,6 +39,20 @@ final class MonitorCoordinator implements TelegramCommandHandler {
         this.store = store;
     }
 
+    void enqueueStartupAnnouncement() throws IOException {
+        store.update(state -> state.withMessage(new Message(Kind.STARTUP, """
+                🔎 Schulnews-Monitor gestartet
+
+                Ich suche jetzt auf den aktiven Schulwebseiten. Sobald ich etwas Neues finde, poste ich es hier.
+
+                📅 Sonntags um 20:00 Uhr (deutsche Zeit) melde ich mich mit einem Status zur laufenden Suche.
+                """.strip())));
+    }
+
+    void enqueueStartupReport(Map<School, SiteCheckResult> results) throws IOException {
+        store.update(state -> state.withMessage(new Message(Kind.STARTUP, startupReport(state, results))));
+    }
+
     void recordNews(School school, long generation, List<NewsItem> items, Instant now) throws IOException {
         store.update(state -> {
             Site site = state.site(school);
@@ -139,6 +153,12 @@ final class MonitorCoordinator implements TelegramCommandHandler {
     }
 
     @Override
+    public void status(long nextOffset) throws IOException {
+        store.update(state -> nextOffset <= state.updateOffset() ? state : state.withMessage(new Message(Kind.NORMAL,
+                "📋 Aktueller Status der Schulwebseiten\n\n" + siteSettings(state))).withOffset(nextOffset));
+    }
+
+    @Override
     public void advance(long nextOffset) throws IOException {
         store.update(state -> nextOffset != state.updateOffset() && (nextOffset == 0 || nextOffset > state.updateOffset())
                 ? state.withOffset(nextOffset) : state);
@@ -154,23 +174,95 @@ final class MonitorCoordinator implements TelegramCommandHandler {
             link = "\n" + school.listingUri();
             titleLimit = 4096 - header.length() - link.length();
         }
-        if (title.length() > titleLimit) {
-            int end = titleLimit - 1;
-            if (Character.isHighSurrogate(title.charAt(end - 1))) {
-                end--;
-            }
-            title = title.substring(0, end) + "…";
-        }
-        return new Message(important ? Kind.IMPORTANT : Kind.NEWS, header + title + link);
+        return new Message(important ? Kind.IMPORTANT : Kind.NEWS, header + shorten(title, titleLimit) + link);
     }
 
     private static String weeklyUpdate(MonitorState state) {
+        return "📋 Wochenupdate zum Schulnews-Monitor\n\nIch suche weiter auf den aktiven Schulwebseiten.\n\n"
+                + siteSettings(state);
+    }
+
+    private static String siteSettings(MonitorState state) {
         String sites = Arrays.stream(School.values())
-                .map(school -> "%s · %s\nSTOP %s · START %s".formatted(school.displayName(),
-                        state.site(school).enabled() ? "aktiv" : "pausiert", school.name(), school.name()))
+                .map(school -> "%s %s\nSTOP %s · START %s".formatted(state.site(school).enabled()
+                                ? "✅ Aktiv ·" : "⏸️ Pausiert ·", school.displayName(), school.name(), school.name()))
                 .collect(Collectors.joining("\n\n"));
-        return "📋 Wochenupdate zum Schulnews-Monitor\n\n%s\n\nSchreibe den gewünschten Befehl in diese Gruppe."
-                .formatted(sites);
+        return sites + "\n\n" + siteCommands();
+    }
+
+    private static String siteCommands() {
+        return """
+                ⚙️ Seiten in dieser Gruppe steuern
+                STOP mit dem Schulkürzel pausiert die Seite, START schaltet sie ein.
+                Zum Beispiel STOP IGS oder START IGS.
+                STATUS zeigt alle Einstellungen.
+                """.strip();
+    }
+
+    private static String startupReport(MonitorState state, Map<School, SiteCheckResult> results) {
+        int active = 0;
+        int successful = 0;
+        int count = 0;
+        var sites = new ArrayList<String>();
+        for (School school : School.values()) {
+            Site site = state.site(school);
+            SiteCheckResult result = results.get(school);
+            if (site.enabled()) {
+                active++;
+                if (result != null && result.generation() == site.generation() && result.successful()) {
+                    successful++;
+                    count += result.count();
+                }
+            }
+            sites.add(startupSite(school, site, result));
+        }
+        String summary = active == 0 ? "Alle Seiten sind pausiert."
+                : "%d von %d aktiven Seiten erfolgreich geprüft · %s gelesen"
+                        .formatted(successful, active, newsCount(count));
+        return """
+                📊 Ergebnis der Startprüfung
+                %s
+
+                %s
+
+                %s
+                """.strip().formatted(summary, String.join("\n\n", sites), siteCommands());
+    }
+
+    private static String startupSite(School school, Site site, SiteCheckResult result) {
+        String name = "%s · %s".formatted(school.name(), school.displayName());
+        if (!site.enabled()) {
+            return "⏸️ " + name + "\nPausiert";
+        }
+        if (result == null || result.generation() != site.generation()) {
+            return "🔎 " + name + "\nAktiv · seit dem Start eingeschaltet";
+        }
+        if (!result.successful()) {
+            return "⚠️ " + name + "\nAktiv · Abruf fehlgeschlagen";
+        }
+        String summary = "✅ " + name + "\nAktiv · " + newsCount(result.count()) + " gelesen";
+        NewsItem latest = result.latest();
+        if (latest == null) {
+            return summary;
+        }
+        String url = latest.url().toString();
+        String link = url.length() <= 500 ? "\n" + url : "";
+        return summary + "\n📰 Neuester Beitrag · " + shorten(latest.title(), 180) + link;
+    }
+
+    private static String newsCount(int count) {
+        return count + (count == 1 ? " Beitrag" : " Beiträge");
+    }
+
+    private static String shorten(String title, int limit) {
+        if (title.length() <= limit) {
+            return title;
+        }
+        int end = limit - 1;
+        if (Character.isHighSurrogate(title.charAt(end - 1))) {
+            end--;
+        }
+        return title.substring(0, end) + "…";
     }
 
     private static boolean matches(Site site, long generation) {

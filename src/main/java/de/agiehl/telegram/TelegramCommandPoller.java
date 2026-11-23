@@ -9,14 +9,20 @@ import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.util.Locale;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
 final class TelegramCommandPoller {
 
     private static final Logger LOG = LoggerFactory.getLogger(TelegramCommandPoller.class);
-    private static final Pattern COMMAND = Pattern.compile(
-            "(/?)(START|STOP)(?:@([a-zA-Z0-9_]+))?\\h+([a-zA-Z]+)", Pattern.CASE_INSENSITIVE);
+    private static final String COMMAND_PREFIX = "(?<slash>/?)";
+    private static final String BOT_ADDRESS = "(?:@(?<recipient>[a-zA-Z0-9_]+))?";
+    private static final Pattern SWITCH_COMMAND = Pattern.compile(
+            COMMAND_PREFIX + "(?<action>START|STOP)" + BOT_ADDRESS + "\\h+(?<school>[a-zA-Z]+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern STATUS_COMMAND = Pattern.compile(
+            COMMAND_PREFIX + "STATUS" + BOT_ADDRESS, Pattern.CASE_INSENSITIVE);
 
     private final TelegramClient telegram;
     private final TelegramCommandHandler handler;
@@ -60,23 +66,33 @@ final class TelegramCommandPoller {
 
     private void process(JsonNode message, long nextOffset) throws IOException, InterruptedException {
         if (fromGroupMember(message)) {
-            var command = COMMAND.matcher(message.path("text").stringValue("").strip());
+            String text = message.path("text").stringValue("").strip();
+            var status = STATUS_COMMAND.matcher(text);
+            if (status.matches() && addressedToBot(status)) {
+                handler.status(nextOffset);
+                return;
+            }
+            var command = SWITCH_COMMAND.matcher(text);
             if (command.matches()) {
                 School school;
                 try {
-                    school = School.valueOf(command.group(4).toUpperCase(Locale.ROOT));
+                    school = School.valueOf(command.group("school").toUpperCase(Locale.ROOT));
                 } catch (IllegalArgumentException ex) {
                     handler.advance(nextOffset);
                     return;
                 }
-                String recipient = command.group(3);
-                if (recipient == null || (command.group(1).equals("/") && telegram.hasUsername(recipient))) {
-                    handler.handle(nextOffset, school, command.group(2).equalsIgnoreCase("START"));
+                if (addressedToBot(command)) {
+                    handler.handle(nextOffset, school, command.group("action").equalsIgnoreCase("START"));
                     return;
                 }
             }
         }
         handler.advance(nextOffset);
+    }
+
+    private boolean addressedToBot(Matcher command) throws IOException, InterruptedException {
+        String recipient = command.group("recipient");
+        return recipient == null || (command.group("slash").equals("/") && telegram.hasUsername(recipient));
     }
 
     private boolean fromGroupMember(JsonNode message) {

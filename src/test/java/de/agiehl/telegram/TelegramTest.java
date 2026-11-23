@@ -97,6 +97,25 @@ class TelegramTest {
     }
 
     @Test
+    void acceptsStatusOnlyFromTheConfiguredGroupAndForThisBot() throws Exception {
+        responses.put("getMe", Map.of("username", "Schulbot"));
+        responses.put("getUpdates", List.of(
+                update(1, -100123, "group", " STATUS "),
+                update(2, -100123, "supergroup", "/status@SchulBot"),
+                update(3, -100123, "group", "/status@fremderbot"),
+                update(4, -999, "group", "/status"),
+                update(5, -100123, "group", "/status IGS"),
+                update(6, -100123, "group", "STATUS@SchulBot"),
+                update(7, -100123, "group", "/status")));
+
+        poller.receive();
+
+        assertEquals(List.of(2L, 3L, 8L), handler.statusRequests);
+        assertEquals(List.of(4L, 5L, 6L, 7L), handler.skipped);
+        assertEquals(8, handler.offset);
+    }
+
+    @Test
     void stopsAtFirstUncommittedUpdate() throws Exception {
         responses.put("getUpdates", List.of(update(1, -100123, "group", "STOP AEG"),
                 update(2, -100123, "group", "START KG")));
@@ -128,6 +147,7 @@ class TelegramTest {
 
     private static final class RecordingHandler implements TelegramCommandHandler {
         private final List<Command> commands = new ArrayList<>();
+        private final List<Long> statusRequests = new ArrayList<>();
         private final List<Long> skipped = new ArrayList<>();
         private long offset;
         private boolean failOnSave;
@@ -143,6 +163,12 @@ class TelegramTest {
                 throw new IOException("Disk full");
             }
             commands.add(new Command(nextOffset, school, enabled));
+            offset = nextOffset;
+        }
+
+        @Override
+        public void status(long nextOffset) {
+            statusRequests.add(nextOffset);
             offset = nextOffset;
         }
 

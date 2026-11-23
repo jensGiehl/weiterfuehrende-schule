@@ -15,6 +15,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,8 +39,11 @@ final class MonitorTasks {
     private final PageArchive archive;
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<School, Check> lastChecks = new EnumMap<>(School.class);
+    private final Map<School, CompletableFuture<SiteCheckResult>> startupChecks = new EnumMap<>(School.class);
     private final Set<School> checking = ConcurrentHashMap.newKeySet();
     private final Set<String> archiving = ConcurrentHashMap.newKeySet();
+    private boolean startupAnnouncementQueued;
+    private boolean startupReportQueued;
 
     MonitorTasks(Clock clock, StateStore store, MonitorCoordinator coordinator, NewsReader reader, PageArchive archive) {
         this.clock = clock;
@@ -51,6 +55,10 @@ final class MonitorTasks {
 
     @Scheduled(fixedDelay = 1000)
     void tick() {
+        boolean starting = !startupAnnouncementQueued;
+        if (starting && !announceStartup()) {
+            return;
+        }
         Instant now = clock.instant();
         try {
             coordinator.enqueueScheduledMessages(now);
@@ -65,9 +73,18 @@ final class MonitorTasks {
             var check = new Check(slot, site.generation());
             if (site.enabled() && !check.equals(lastChecks.get(school)) && checking.add(school)) {
                 lastChecks.put(school, check);
-                workers.submit(() -> checkSchool(school, check));
+                var result = CompletableFuture.supplyAsync(() -> checkSchool(school, check), workers)
+                        .exceptionally(failure -> {
+                            LOG.error("Prüfung für {} fehlgeschlagen.", school.displayName(), failure);
+                            return SiteCheckResult.failed(check.generation());
+                        });
+                if (starting) {
+                    startupChecks.put(school, result);
+                }
             }
         }
+        reportStartupWhenReady();
+
         int free = ARCHIVE_PARALLELISM - archiving.size();
         if (free > 0 && !state.archives().isEmpty()) {
             state.archives().entrySet().stream()
@@ -84,11 +101,37 @@ final class MonitorTasks {
         }
     }
 
-    private void checkSchool(School school, Check check) {
+    private boolean announceStartup() {
+        try {
+            coordinator.enqueueStartupAnnouncement();
+            startupAnnouncementQueued = true;
+            return true;
+        } catch (IOException failure) {
+            LOG.error("Startmeldung konnte nicht gespeichert werden.", failure);
+            return false;
+        }
+    }
+
+    private void reportStartupWhenReady() {
+        if (startupReportQueued || startupChecks.values().stream().anyMatch(check -> !check.isDone())) {
+            return;
+        }
+        var results = new EnumMap<School, SiteCheckResult>(School.class);
+        startupChecks.forEach((school, check) -> results.put(school, check.resultNow()));
+        try {
+            coordinator.enqueueStartupReport(results);
+            startupReportQueued = true;
+            startupChecks.clear();
+        } catch (IOException failure) {
+            LOG.error("Ergebnis der Startprüfung konnte nicht gespeichert werden.", failure);
+        }
+    }
+
+    private SiteCheckResult checkSchool(School school, Check check) {
         try {
             var site = store.snapshot().site(school);
             if (!site.enabled() || site.generation() != check.generation()) {
-                return;
+                return SiteCheckResult.failed(check.generation());
             }
             List<NewsItem> items;
             try {
@@ -96,9 +139,10 @@ final class MonitorTasks {
             } catch (IOException failure) {
                 LOG.warn("Newsabruf für {} fehlgeschlagen: {}", school.displayName(), failure.getMessage());
                 coordinator.recordFailure(school, check.generation(), clock.instant());
-                return;
+                return SiteCheckResult.failed(check.generation());
             }
             coordinator.recordNews(school, check.generation(), items, clock.instant());
+            return SiteCheckResult.read(check.generation(), items);
         } catch (IOException failure) {
             LOG.error("Prüfergebnis für {} konnte nicht gespeichert werden.", school.displayName(), failure);
         } catch (InterruptedException interrupted) {
@@ -106,6 +150,7 @@ final class MonitorTasks {
         } finally {
             checking.remove(school);
         }
+        return SiteCheckResult.failed(check.generation());
     }
 
     private void archiveNews(String revision, ArchiveJob job) {

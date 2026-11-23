@@ -2,6 +2,16 @@
 
 Die Spring-Boot-Anwendung beobachtet vier Schulwebseiten und meldet neue Beiträge mit Titel und Link in einer Telegram-Gruppe. Ein Titel mit `Anmeldung` wird unabhängig von Groß- und Kleinschreibung als **❗ WICHTIG** markiert. Die Anwendung archiviert die verlinkten Seiten lokal.
 
+## Meldungen beim Start
+
+Beim Start kündigt der Bot in der Telegram-Gruppe an, dass er die aktiven Newsseiten jetzt prüft, neue Funde hier postet und jeden Sonntag um 20 Uhr einen Status sendet. Sobald die Startprüfung abgeschlossen ist, meldet der Bot die Gesamtzahl der gelesenen Beiträge. Für jede aktive Quelle nennt er die Anzahl und den neuesten gelisteten Beitrag mit Titel und Link oder zeigt an, dass der Abruf fehlgeschlagen ist. Pausierte Quellen sind im Status entsprechend gekennzeichnet.
+
+Beim ersten erfolgreichen Abruf einer Quelle archiviert der Bot die sichtbaren Beiträge und meldet davon die Beiträge mit `Anmeldung` im Titel. Bei späteren Abrufen meldet er neue Links und geänderte Überschriften.
+
+## Seiten in Telegram steuern
+
+Bei einer neuen Einrichtung sind alle vier Quellen aktiv. Der Bot speichert die Einstellungen über Neustarts hinweg. Mit `STATUS` oder `/status` kannst du den aktuellen Stand jederzeit in der konfigurierten Gruppe abfragen.
+
 | Schule | Newsquelle | Telegram-Befehle |
 | --- | --- | --- |
 | Robert-Schuman-IGS Frankenthal | [Startseite](https://igs-frankenthal.de/) | `STOP IGS` · `START IGS` |
@@ -9,7 +19,7 @@ Die Spring-Boot-Anwendung beobachtet vier Schulwebseiten und meldet neue Beiträ
 | Albert-Einstein-Gymnasium Frankenthal | [Startseite](https://aeg-frankenthal.de/) | `STOP AEG` · `START AEG` |
 | Karolinen-Gymnasium Frankenthal | [Startseite](https://karolinen-gymnasium.de/) | `STOP KG` · `START KG` |
 
-Die Befehle gelten für die jeweilige Schule. `START` löst die nächste Prüfung sofort aus. Der Bot beantwortet Befehle aus der konfigurierten Gruppe. `/stop IGS` und `/start IGS` funktionieren ebenfalls, bei Bedarf mit Bot-Namen wie `/stop@DeinBot IGS`.
+Mit `STOP` pausierst du die jeweilige Quelle. Wenn du sie mit `START` wieder aktivierst, prüft der Bot sie sofort. `/stop IGS` und `/start IGS` funktionieren ebenfalls. Du kannst den Bot mit `/stop@DeinBot IGS` oder `/status@DeinBot` direkt ansprechen.
 
 ## Zeitplan
 
@@ -21,7 +31,6 @@ Sämtliche Uhrzeiten gelten für `Europe/Berlin`.
 | 25. Dezember 2026 bis 3. Januar 2027 | Alle 15 Minuten | Nach 6 Stunden |
 | Ab 4. Januar 2027 | Jede Minute | Nach 30 Minuten |
 
-- Beim Start prüft die Anwendung alle aktiven Quellen sofort. Sie archiviert beim ersten erfolgreichen Abruf die sichtbaren Beiträge und meldet davon die Beiträge mit `Anmeldung` im Titel. Danach meldet sie neue Links und geänderte Überschriften.
 - Am 4. Januar 2027 um 8 Uhr erinnert der Bot an die mögliche Freischaltung der IGS-Anmeldung. Sonntags um 20 Uhr sendet er den Status aller Quellen und die Befehle. Bei einem späteren Anwendungsstart werden diese Nachrichten am selben Tag nachgeholt.
 - Der Bot meldet eine anhaltende Störung einmal pro Quelle zwischen 6 und 22 Uhr und gibt bei einem erfolgreichen Abruf nach einer gemeldeten Störung Entwarnung. News und Entwarnungen sind grundsätzlich rund um die Uhr möglich. Eine zurückgehaltene Störungsmeldung wird vor der zugehörigen Entwarnung zugestellt.
 - Der Monitor wertet die verlinkten Überschriften der vier Newslisten aus. Änderungen, die nur im Text eines bestehenden Artikels oder auf einer anderen Seite erscheinen, lösen keine Meldung aus.
@@ -29,7 +38,7 @@ Sämtliche Uhrzeiten gelten für `Europe/Berlin`.
 ## Telegram einrichten
 
 1. Erstelle bei `@BotFather` mit `/newbot` einen Bot und bewahre das Token auf.
-2. Stelle für Klartextbefehle wie `STOP IGS` bei `@BotFather` unter `/setprivacy` den Datenschutzmodus auf `Disable`. Falls der Bot bereits in der Gruppe war, entferne ihn und füge ihn erneut hinzu. Anschließend kann jedes Gruppenmitglied die Quellen steuern. [Telegram-Dokumentation](https://core.telegram.org/bots/features#privacy-mode)
+2. Stelle für Klartextbefehle wie `STOP IGS` und `STATUS` bei `@BotFather` unter `/setprivacy` den Datenschutzmodus auf `Disable`. Falls der Bot bereits in der Gruppe war, entferne ihn und füge ihn erneut hinzu. Anschließend kann jedes Gruppenmitglied die Quellen steuern. [Telegram-Dokumentation](https://core.telegram.org/bots/features#privacy-mode)
 3. Füge den Bot zur gewünschten Gruppe hinzu, erlaube ihm das Senden von Nachrichten und sende dort `/start@DeinBot`. Ermittle die negative Gruppen-ID über `getUpdates`, bevor du die Anwendung startest. Betreibe pro Bot nur eine Instanz; die Telegram-Abfrage benötigt einen Bot ohne aktiven Webhook. [Telegram Bot API](https://core.telegram.org/bots/api#getupdates)
 
 So liest du die Gruppen-ID in PowerShell aus und setzt sie für den lokalen Start.

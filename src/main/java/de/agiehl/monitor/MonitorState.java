@@ -37,7 +37,7 @@ record MonitorState(Map<School, Site> sites, Map<String, ArchiveJob> archives, L
         changedSites.put(school, site);
         var changedJobs = new LinkedHashMap<>(archives);
         changedJobs.putAll(jobs);
-        return new MonitorState(changedSites, changedJobs, withMessages(messages), updateOffset, reminderQueued,
+        return new MonitorState(changedSites, changedJobs, outboxWith(messages), updateOffset, reminderQueued,
                 lastWeeklyUpdate);
     }
 
@@ -45,8 +45,12 @@ record MonitorState(Map<School, Site> sites, Map<String, ArchiveJob> archives, L
         return new MonitorState(sites, archives, outbox, offset, reminderQueued, lastWeeklyUpdate);
     }
 
+    MonitorState withMessage(Message message) {
+        return withScheduledMessages(List.of(message), reminderQueued, lastWeeklyUpdate);
+    }
+
     MonitorState withScheduledMessages(List<Message> messages, boolean reminder, LocalDate weekly) {
-        return new MonitorState(sites, archives, withMessages(messages), updateOffset, reminder, weekly);
+        return new MonitorState(sites, archives, outboxWith(messages), updateOffset, reminder, weekly);
     }
 
     MonitorState afterDelivery(UUID id) {
@@ -64,7 +68,7 @@ record MonitorState(Map<School, Site> sites, Map<String, ArchiveJob> archives, L
         return new MonitorState(sites, changedJobs, outbox, updateOffset, reminderQueued, lastWeeklyUpdate);
     }
 
-    private List<Message> withMessages(List<Message> messages) {
+    private List<Message> outboxWith(List<Message> messages) {
         var changedOutbox = new ArrayList<>(outbox);
         changedOutbox.addAll(messages);
         return changedOutbox;
@@ -99,6 +103,6 @@ record MonitorState(Map<School, Site> sites, Map<String, ArchiveJob> archives, L
     }
 
     enum Kind {
-        IMPORTANT, NEWS, NORMAL, OUTAGE, RECOVERY
+        STARTUP, IMPORTANT, NEWS, NORMAL, OUTAGE, RECOVERY
     }
 }
