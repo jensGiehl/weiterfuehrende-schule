@@ -58,14 +58,7 @@ Ohne Telegram-Zugangsdaten bleiben Abruf und Archiv aktiv. Ausgehende Nachrichte
 
 GitHub Actions baut das Image für `linux/amd64` und `linux/arm64` und veröffentlicht beide Varianten unter `ghcr.io/jensgiehl/weiterfuehrende-schule:latest`. Das Image ist öffentlich abrufbar. Docker wählt die passende Variante. Verwende auf dem Raspberry Pi ein 64-Bit-Betriebssystem. [GitHub Actions](https://github.com/jensGiehl/weiterfuehrende-schule/actions)
 
-Hinterlege das Telegram-Token und die Gruppen-ID lokal in `.env`.
-
-```dotenv
-MONITOR_TELEGRAM_BOT_TOKEN=HIER_DEIN_BOT_TOKEN
-MONITOR_TELEGRAM_CHAT_ID=-1001234567890
-```
-
-Das Skript zieht bei jedem Aufruf das aktuelle Image, ersetzt den Container und bindet dasselbe Datenvolume wieder ein.
+Ersetze `HIER_DEIN_BOT_TOKEN` und `-1001234567890` in den `--env`-Parametern durch dein Bot-Token und deine Gruppen-ID. Das Skript zieht bei jedem Aufruf das aktuelle Image, ersetzt den Container und bindet dasselbe Datenvolume wieder ein.
 
 ```bash
 docker rm -f laura-schule 2>/dev/null
@@ -75,7 +68,8 @@ docker run -d \
   --pull=always \
   -p 8089:8080 \
   --restart unless-stopped \
-  --env-file .env \
+  --env 'MONITOR_TELEGRAM_BOT_TOKEN=HIER_DEIN_BOT_TOKEN' \
+  --env 'MONITOR_TELEGRAM_CHAT_ID=-1001234567890' \
   --mount type=volume,source=laura-schule-data,target=/app/data \
   ghcr.io/jensgiehl/weiterfuehrende-schule:latest
 ```
