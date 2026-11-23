@@ -56,16 +56,7 @@ Ohne Telegram-Zugangsdaten bleiben Abruf und Archiv aktiv. Ausgehende Nachrichte
 
 ## Docker
 
-GitHub Actions baut das Image für `linux/amd64` und `linux/arm64` und veröffentlicht beide Varianten unter `ghcr.io/jensgiehl/weiterfuehrende-schule:latest`. Docker wählt die passende Variante. Verwende auf dem Raspberry Pi ein 64-Bit-Betriebssystem. [GitHub Actions](https://github.com/jensGiehl/weiterfuehrende-schule/actions)
-
-Solange das Paket privat ist, melde dich auf dem Docker-Host einmal mit einem GitHub-Konto mit Paketlesezugriff und einem klassischen Token mit `read:packages` an. [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-
-```bash
-read -rsp 'GitHub-Token: ' GHCR_TOKEN
-printf '\n'
-printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u jensGiehl --password-stdin
-unset GHCR_TOKEN
-```
+GitHub Actions baut das Image für `linux/amd64` und `linux/arm64` und veröffentlicht beide Varianten unter `ghcr.io/jensgiehl/weiterfuehrende-schule:latest`. Das Image ist öffentlich abrufbar. Docker wählt die passende Variante. Verwende auf dem Raspberry Pi ein 64-Bit-Betriebssystem. [GitHub Actions](https://github.com/jensGiehl/weiterfuehrende-schule/actions)
 
 Hinterlege das Telegram-Token und die Gruppen-ID lokal in `.env`.
 
